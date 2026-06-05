@@ -90,7 +90,13 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  uint8_t once_pressed = 0;
 
+//  for (size_t i=0; i<3; ++i) {
+//	  HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5, GPIO_PIN_SET);
+//	  HAL_Delay(200);
+//	  HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5, GPIO_PIN_RESET);
+//  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -98,9 +104,33 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  HAL_UART_Transmit(&huart2, (uint8_t*)"Hello\r\n", 7, 100);
-	  HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_5);
-	  HAL_Delay(500);
+
+	  // Button B1 is PC13. This polling based
+	  if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
+		  HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5, GPIO_PIN_SET);
+		  if (once_pressed == 0) {
+			  HAL_UART_Transmit(&huart2, (uint8_t*)"Pressed\r\n", 9, 100);
+		  }
+		  once_pressed = 1;
+	  }
+	  else {
+		  once_pressed = 0;
+		  HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5, GPIO_PIN_RESET);
+	  }
+
+//	  HAL_UART_Transmit(&huart2, (uint8_t*)"Hello\r\n", 7, 100);
+//	  HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_5);
+//	  HAL_Delay(500);
+
+
+
+
+
+
+
+
+
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -207,6 +237,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
@@ -219,6 +250,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
+
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
