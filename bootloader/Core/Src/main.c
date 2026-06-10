@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <string.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -26,11 +27,26 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef struct __attribute__((packed)) {
+
+	uint8_t soh;
+	uint8_t blockNum;
+	uint8_t inverseBlockNum;
+	uint8_t data[128];
+	uint8_t checksum;
+
+}XmodemPacket;
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define WAIT_TIME 5000
+#define XMODEM_SOH 0x01
+#define XMODEM_ACK 0x06
+#define XMODEM_NAK 0x15
+#define XMODEM_EOT 0x04
+#define XMODEM_DATA_SIZE 128
 
 /* USER CODE END PD */
 
@@ -53,6 +69,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void jumpToApp(void);
+uint8_t parsePacket(XmodemPacket* curr_packet, uint8_t expectedBlock);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,11 +111,23 @@ int main(void)
 
   HAL_UART_Transmit(&huart2, (uint8_t*)"Bootloader starting\r\n", 21, 100);
 
+  // Variables for stopping bootloader
   uint32_t start_time;
-  uint32_t delay = 5000;
+  uint32_t delay = WAIT_TIME;
   uint8_t is_pressed = 0;
 
-  start_time = HAL_GetTick();
+  // Variables for UART communication
+  uint32_t flashAddress = 0x08008000;
+  uint8_t firmware_buffer[XMODEM_DATA_SIZE];
+  uint8_t expected_block = 1;
+  XmodemPacket curr_packet;
+  uint8_t send_state;
+  uint8_t transmission_done = 0;
+  uint8_t ack = XMODEM_ACK;
+  uint8_t nak = XMODEM_NAK;
+
+
+  start_time = HAL_GetTick(); // keep this the last line before the loop bc it is time sensitive
 
   /* USER CODE END 2 */
 
@@ -106,23 +135,54 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	// Adding Bootloader Delay (Poll-Based) If pressed it will stay in bootloader for 5 sec
-	// else it will jump to app
+	// Adding Bootloader Delay (Poll-Based): If button pressed within 5 sec it will stay in bootloader,
+	// else it will jump to app.
 
-	  if ((HAL_GetTick() - start_time) < delay && (is_pressed == 0)) {
-		  if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
-			  is_pressed = 1;
-			  HAL_UART_Transmit(&huart2, (uint8_t*)"Staying in bootloader\r\n", 23, 100);
+	  while (!is_pressed) {
+			if ((HAL_GetTick() - start_time) <= delay) {
+			  if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
+				  HAL_UART_Transmit(&huart2, (uint8_t*)"Staying in bootloader\r\n", 23, 100);
+				  is_pressed = 1;
+			  }
+			}
+			else { // Might want to change this as I develop the 2nd part below.
+			  HAL_UART_Transmit(&huart2, (uint8_t*)"Jumping to app\r\n", 16, 100);
+			  jumpToApp();
+			}
+	  }
+
+	  HAL_UART_Transmit(&huart2, &nak, 1, 100); // This tells the sender we are ready - XMODEM protocol
+//	  HAL_UART_Transmit(&huart2, (uint8_t*)"NAK\r\n", 5, 100);
+
+
+	  // Working on receiving packets from a sender via XMODEM protocol over UART. Eventually this will be out app.
+	  // It will keep sending nacks if there is no sender.
+	  while (!transmission_done) {
+		  send_state = parsePacket(&curr_packet, expected_block);
+
+		  if (send_state == XMODEM_ACK) {
+			  HAL_UART_Transmit(&huart2, &ack, 1, 100);
+//			  The following line only redirects the firmware_buffer pointer to curr_packets.data pointer, we will lose previous packet
+//			  firmware_buffer = curr_packet.data;
+			  memcpy(firmware_buffer, curr_packet.data, XMODEM_DATA_SIZE);
+//			  flashAddress += XMODEM_DATA_SIZE;
+			  ++expected_block;
+		  }
+		  else if (send_state == XMODEM_NAK) {
+			  HAL_UART_Transmit(&huart2, &nak, 1, 100);
+//			  HAL_UART_Transmit(&huart2, (uint8_t*)"NAK\r\n", 5, 100);
+		  }
+		  else if (send_state == XMODEM_EOT) {
+			  HAL_UART_Transmit(&huart2, &ack, 1, 100);
+			  transmission_done = 1;
 		  }
 	  }
-	  else if (((HAL_GetTick() - start_time) > delay) && (is_pressed == 0)) {
-		  HAL_UART_Transmit(&huart2, (uint8_t*)"Jumping to app\r\n", 16, 100);
-		  jumpToApp();
-	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
+
   /* USER CODE END 3 */
 }
 
@@ -268,6 +328,26 @@ void jumpToApp(void) {
 
 	appStart();
 
+}
+
+
+uint8_t parsePacket(XmodemPacket* curr_packet, uint8_t expectedBlock) {
+
+	if (HAL_UART_Receive(&huart2, (uint8_t*) curr_packet, sizeof(XmodemPacket), 100) != HAL_OK) return XMODEM_NAK;
+
+	if (curr_packet->soh == XMODEM_EOT) return XMODEM_EOT;
+
+	uint8_t my_checksum = 0;
+
+	for (uint8_t i=0; i<XMODEM_DATA_SIZE; i++) {
+		my_checksum += curr_packet->data[i];
+	}
+
+	if ((curr_packet->soh != XMODEM_SOH) || (curr_packet->checksum != my_checksum)
+			|| (curr_packet->blockNum != ~(curr_packet->inverseBlockNum)) || (curr_packet->blockNum != expectedBlock)) {
+		return XMODEM_NAK;
+	}
+	else return XMODEM_ACK;
 }
 
 /* USER CODE END 4 */

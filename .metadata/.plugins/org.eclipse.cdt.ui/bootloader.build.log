@@ -1,17 +1,21 @@
-23:10:43 **** Incremental Build of configuration Debug for project bootloader ****
+23:18:50 **** Incremental Build of configuration Debug for project bootloader ****
 make -j16 all 
 arm-none-eabi-gcc "../Core/Src/main.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F446xx -c -I../Core/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o "Core/Src/main.o"
+../Core/Src/main.c: In function 'main':
+../Core/Src/main.c:120:12: warning: unused variable 'flashAddress' [-Wunused-variable]
+  120 |   uint32_t flashAddress = 0x08008000;
+      |            ^~~~~~~~~~~~
 arm-none-eabi-gcc -o "bootloader.elf" @"objects.list"   -mcpu=cortex-m4 -T"C:\Users\Harshdeep Singh\Engineering_Projects\STM_Projects\stm32-bootloader\bootloader\STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="bootloader.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 Finished building target: bootloader.elf
  
 arm-none-eabi-size  bootloader.elf 
 arm-none-eabi-objdump -h -S bootloader.elf  > "bootloader.list"
    text	   data	    bss	    dec	    hex	filename
-   9496	     12	   1644	  11152	   2b90	bootloader.elf
+  10156	     12	   1644	  11812	   2e24	bootloader.elf
 Finished building: default.size.stdout
  
 Finished building: bootloader.list
  
 
-23:10:44 Build Finished. 0 errors, 0 warnings. (took 761ms)
+23:18:51 Build Finished. 0 errors, 1 warnings. (took 861ms)
 
