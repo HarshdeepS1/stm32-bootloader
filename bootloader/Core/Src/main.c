@@ -70,6 +70,7 @@ static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void jumpToApp(void);
 uint8_t parsePacket(XmodemPacket* curr_packet, uint8_t expectedBlock);
+void blink(uint8_t delay);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -117,7 +118,7 @@ int main(void)
   uint8_t is_pressed = 0;
 
   // Variables for UART communication
-  uint32_t flashAddress = 0x08008000;
+//  uint32_t flashAddress = 0x08008000;
   uint8_t firmware_buffer[XMODEM_DATA_SIZE];
   uint8_t expected_block = 1;
   XmodemPacket curr_packet;
@@ -151,8 +152,10 @@ int main(void)
 			}
 	  }
 
-	  HAL_UART_Transmit(&huart2, &nak, 1, 100); // This tells the sender we are ready - XMODEM protocol
+	  if (!transmission_done) {
+	  	  HAL_UART_Transmit(&huart2, &nak, 1, 100); // This tells the sender we are ready - XMODEM protocol
 //	  HAL_UART_Transmit(&huart2, (uint8_t*)"NAK\r\n", 5, 100);
+	  }
 
 
 	  // Working on receiving packets from a sender via XMODEM protocol over UART. Eventually this will be out app.
@@ -161,12 +164,14 @@ int main(void)
 		  send_state = parsePacket(&curr_packet, expected_block);
 
 		  if (send_state == XMODEM_ACK) {
+			  blink(200);
 			  HAL_UART_Transmit(&huart2, &ack, 1, 100);
 //			  The following line only redirects the firmware_buffer pointer to curr_packets.data pointer, we will lose previous packet
 //			  firmware_buffer = curr_packet.data;
 			  memcpy(firmware_buffer, curr_packet.data, XMODEM_DATA_SIZE);
 //			  flashAddress += XMODEM_DATA_SIZE;
 			  ++expected_block;
+
 		  }
 		  else if (send_state == XMODEM_NAK) {
 			  HAL_UART_Transmit(&huart2, &nak, 1, 100);
@@ -177,6 +182,15 @@ int main(void)
 			  transmission_done = 1;
 		  }
 	  }
+
+
+//	  HAL_UART_Transmit(&huart2, firmware_buffer, XMODEM_DATA_SIZE, 100);
+
+
+
+//	  Once done turn on LD2 -> PA5
+	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+
 
     /* USER CODE END WHILE */
 
@@ -333,9 +347,14 @@ void jumpToApp(void) {
 
 uint8_t parsePacket(XmodemPacket* curr_packet, uint8_t expectedBlock) {
 
-	if (HAL_UART_Receive(&huart2, (uint8_t*) curr_packet, sizeof(XmodemPacket), 100) != HAL_OK) return XMODEM_NAK;
+//     Read just the first byte first and determine if EOT or SOH
+    if (HAL_UART_Receive(&huart2, (uint8_t*)curr_packet, 1, 5000) != HAL_OK)
+        return XMODEM_NAK;
 
-	if (curr_packet->soh == XMODEM_EOT) return XMODEM_EOT;
+    if (curr_packet->soh == XMODEM_EOT) return XMODEM_EOT;
+
+	if (HAL_UART_Receive(&huart2, (uint8_t*) curr_packet + 1, sizeof(XmodemPacket) - 1, 5000) != HAL_OK)
+		return XMODEM_NAK;
 
 	uint8_t my_checksum = 0;
 
@@ -343,11 +362,19 @@ uint8_t parsePacket(XmodemPacket* curr_packet, uint8_t expectedBlock) {
 		my_checksum += curr_packet->data[i];
 	}
 
+	// Bug Fixed 6/10/2026: ~(curr_packet->inverseBlockNum)) & 0xFF, needed the 0xFF since ~ converts uint8_t to int first
 	if ((curr_packet->soh != XMODEM_SOH) || (curr_packet->checksum != my_checksum)
-			|| (curr_packet->blockNum != ~(curr_packet->inverseBlockNum)) || (curr_packet->blockNum != expectedBlock)) {
+			|| (curr_packet->blockNum != ((~(curr_packet->inverseBlockNum)) & 0xFF)) || (curr_packet->blockNum != expectedBlock)) {
 		return XMODEM_NAK;
 	}
 	else return XMODEM_ACK;
+}
+
+void blink(uint8_t delay) {
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+    HAL_Delay(delay);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 }
 
 /* USER CODE END 4 */
