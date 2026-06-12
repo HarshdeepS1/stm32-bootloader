@@ -1,0 +1,21 @@
+# CubeIDE build artifacts
+Debug/
+Release/
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+
+# CubeIDE IDE files
+.metadata/
+.settings/
+*.launch
+
+# CubeMX backup files
+*.bak
+
+# Python
+__pycache__/
+*.pyc
+.env
