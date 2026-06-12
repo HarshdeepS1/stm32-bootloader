@@ -1,19 +1,10 @@
-23:17:48 **** Build of configuration Debug for project app ****
+19:17:19 **** Incremental Build of configuration Debug for project app ****
 make -j16 all 
-arm-none-eabi-gcc -o "app.elf" @"objects.list"   -mcpu=cortex-m4 -T"C:\Users\Harshdeep Singh\Engineering_Projects\STM_Projects\stm32-bootloader\app\STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="app.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
-Finished building target: app.elf
- 
 arm-none-eabi-size  app.elf 
-arm-none-eabi-objdump -h -S app.elf  > "app.list"
-arm-none-eabi-objcopy  -O binary app.elf  "app.bin"
    text	   data	    bss	    dec	    hex	filename
-   9316	     12	   1644	  10972	   2adc	app.elf
+  12004	     92	   1972	  14068	   36f4	app.elf
 Finished building: default.size.stdout
  
-Finished building: app.list
- 
-Finished building: app.bin
- 
 
-23:17:49 Build Finished. 0 errors, 0 warnings. (took 971ms)
+19:17:19 Build Finished. 0 errors, 0 warnings. (took 252ms)
 

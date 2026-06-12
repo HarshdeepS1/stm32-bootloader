@@ -6,6 +6,8 @@ SOH = 0x01
 EOT = 0x04
 ACK = 0x06
 NAK = 0x15
+DATA_SIZE = 128
+PACKET_SIZE = 132
 
 def calculate_checksum(data):
     # sum all bytes and return lowest 8 bits
@@ -13,6 +15,39 @@ def calculate_checksum(data):
     for byte in data:
         sum += byte
     return sum & 0xFF
+
+def send_one_packet(serial_obj,packet_num,data):
+    packet_num = packet_num
+    packet = bytearray([SOH, packet_num, (~packet_num) & 0xFF])
+    checksum = 0
+  
+    data = data.ljust(128, b'\x1A')  # 0x1A is standard XMODEM padding
+    packet.extend(data)
+    checksum = calculate_checksum(data)
+    packet.append(checksum)
+
+    bytes_written = serial_obj.write(packet)
+
+    return bytes_written
+    
+def wait_for_ack(serial_obj,value=ACK):
+    if value == ACK:
+        other_value = NAK
+    else:
+        other_value = ACK
+
+    listening = True
+    while (listening):
+        if serial_obj.in_waiting > 0:
+            data = serial_obj.read(1)
+            if data and data[0] == value:
+                listening = False
+            elif data and data[0] == other_value:
+                break
+            else:
+                pass
+    return listening
+
 
 def send_file(port, filename):
     # open serial port
@@ -29,57 +64,99 @@ def send_file(port, filename):
     ser.reset_output_buffer()
 
     print("Listening for Start")
+
     # Waiting for initial NAK from STM32
-    listening = True
-    while (listening):
-        if ser.in_waiting > 0:
-            data = ser.read(1)
-            if data and data[0] == NAK:
-                print("Starting Communication")
-                listening = False
+    # listening = True
+    # while (listening):
+    #     if ser.in_waiting > 0:
+    #         data = ser.read(1)
+    #         if data and data[0] == NAK:
+    #             print("Starting Communication")
+    #             listening = False
 
+    while(wait_for_ack(ser,value=NAK)):
+        pass
+    print("Starting Communication")    
+    
     packet_num = 1
-    packet = bytearray([SOH, packet_num, (~packet_num) & 0xFF])
-    checksum = 0
+    total_data_bytes_sent = 0
 
-    with open(filename, "rb") as f:
-        data = f.read(16)
-        data = data.ljust(128, b'\x1A')  # 0x1A is standard XMODEM padding
-        # byte_data = bytes([int(data,2)])
-        packet.extend(data)
-        checksum = calculate_checksum(data)
-        packet.append(checksum)
+    with open(filename,"rb") as f:
+        while True:
+            data = f.read(DATA_SIZE)
+            if not data:
+                break
+
+            if(send_one_packet(ser,packet_num,data) == PACKET_SIZE):
+                while(wait_for_ack(ser)): # While I am not getting an ACK, I keep resending packet
+                    send_one_packet(ser,packet_num,data)
+                    print(f"Packet {packet_num} sent | not received: Resending")
+
+                # I have received an ACK for the current packet
+                print(f"Packet {packet_num} sent | received")
+                packet_num += 1
+                total_data_bytes_sent += DATA_SIZE
+            else:
+                print(f"Packet {packet_num} failed to be sent")
+
+        # Finished reading file
+        ser.write(bytes([EOT]))
+        while(wait_for_ack(ser)):
+            ser.write(bytes([EOT]))
+            print("Packet EOT sent | not received: Resending")
+        print("Successfully Ending Communication")
 
     f.close()
-
-    print(f"Sending Packet...{time.time()}")
-    ser.write(packet)
-    print("Succesfully Sent Packet")
-
-    listening = True
-    while (listening):
-        if ser.in_waiting > 0:
-            data = ser.read(1)
-            if data and data[0] == ACK:
-                print(f"STM32 Successfully Recieved Packet: {packet_num}")
-                listening = False
-                packet_num += 1
-
-    ser.write(bytes([EOT]))
-
-    listening = True
-    while (listening):
-        if ser.in_waiting > 0:
-            data = ser.read(1)
-            if data and data[0] == ACK:
-                print("Successfully Ended Communication")
-                listening = False
-                packet_num += 1
-
     ser.close()
+
+    return total_data_bytes_sent
+
+    # packet_num = 1
+    # packet = bytearray([SOH, packet_num, (~packet_num) & 0xFF])
+    # checksum = 0
+
+    # with open(filename, "rb") as f:
+    #     data = f.read(16)
+    #     data = data.ljust(128, b'\x1A')  # 0x1A is standard XMODEM padding
+    #     # byte_data = bytes([int(data,2)])
+    #     packet.extend(data)
+    #     checksum = calculate_checksum(data)
+    #     packet.append(checksum)
+
+    # f.close()
+
+    # print(f"Sending Packet...{time.time()}")
+    # ser.write(packet)
+    # print("Succesfully Sent Packet")
+
+    # listening = True
+    # while (listening):
+    #     if ser.in_waiting > 0:
+    #         data = ser.read(1)
+    #         if data and data[0] == ACK:
+    #             print(f"STM32 Successfully Recieved Packet: {packet_num}")
+    #             listening = False
+    #             packet_num += 1
+
+    # ser.write(bytes([EOT]))
+
+    # listening = True
+    # while (listening):
+    #     if ser.in_waiting > 0:
+    #         data = ser.read(1)
+    #         if data and data[0] == ACK:
+    #             print("Successfully Ended Communication")
+    #             listening = False
+    #             packet_num += 1
+
+    # ser.close()
 
 
 def main():
-    send_file("COM6","app.bin")
+    # Note to get the actual length of the file do:
+    # Get-Item app.bin | Select-Object Length
+    # This returned 9328, very close to 9344 (due to the padding on the last packet)
+    bytes_sent = send_file("COM6","app.bin")
+    print(f"Total number of data bytes sent from app.bin: {bytes_sent}")
 
 main()
